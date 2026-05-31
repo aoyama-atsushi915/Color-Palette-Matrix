@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Premium Material Design Palette Generator - Matrix</title>
+    <!-- Google Fonts: Outfit for sleek modern UI, JetBrains Mono for code blocks -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Background glows for modern aesthetic -->
+    <div class="glow-bg">
+        <div class="glow-sphere glow-1"></div>
+        <div class="glow-sphere glow-2"></div>
+    </div>
+
+    <div class="app-container">
+        <!-- Header Section -->
+        <header class="app-header">
+            <div class="logo-area">
+                <span class="logo-icon">🎨</span>
+                <h1>Material Matrix</h1>
+            </div>
+            <p class="subtitle">1つの基準色から、調和のとれた全19色相（計266色）のマテリアルデザインパレットを一括自動生成します。</p>
+            <div class="theme-switch-container">
+                <button id="theme-toggle" class="theme-toggle-btn" aria-label="テーマ切り替え">
+                    <span class="toggle-icon">🌙</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Dashboard -->
+        <main class="app-dashboard">
+            <!-- Sidebar: Input Controls -->
+            <section class="control-panel glass-card">
+                <h2 class="section-title">パレット設定</h2>
+                
+                <!-- Color Input Group -->
+                <div class="control-group">
+                    <label for="color-input">基準カラー (Hex)</label>
+                    <div class="color-picker-wrapper">
+                        <div class="picker-preview" id="picker-preview-btn">
+                            <input type="color" id="color-picker" value="#3f51b5" aria-label="カラーピッカー">
+                        </div>
+                        <input type="text" id="color-input" value="#3f51b5" placeholder="#3f51b5" maxlength="9">
+                    </div>
+                </div>
+
+                <!-- Figma Name Input -->
+                <div class="control-group">
+                    <label for="color-name-input">Figma 変数カラー名 (基準)</label>
+                    <div class="helper-text">エクスポート時の命名規則：<code>primitive/{色相名}/{トーン}</code></div>
+                    <input type="text" id="color-name-input" value="indigo" placeholder="例: indigo, brand, primary">
+                </div>
+
+                <!-- Tone Analyzer & Customizer -->
+                <div class="control-group">
+                    <div class="label-with-badge">
+                        <label for="tone-slider">基準トーン判定</label>
+                        <span class="badge" id="detected-tone-badge">500番相当 (自動)</span>
+                    </div>
+                    <div class="slider-wrapper">
+                        <input type="range" id="tone-slider" min="0" max="9" step="1" value="5">
+                        <div class="slider-ticks">
+                            <span>50</span>
+                            <span>300</span>
+                            <span>500</span>
+                            <span>700</span>
+                            <span>900</span>
+                        </div>
+                    </div>
+                    <div class="helper-text mt-1">
+                        入力色が何番のトーンに相当するかを自動判定しています。スライダーを動かして手動で基準トーンを変更することもできます。
+                    </div>
+                </div>
+
+                <!-- Generation Mode Options (Natural vs strict) -->
+                <div class="control-group">
+                    <label>生成モード</label>
+                    <div class="radio-group">
+                        <label class="radio-label">
+                            <input type="radio" name="gen-mode" value="natural" checked>
+                            <span class="radio-custom"></span>
+                            <span class="radio-text">ナチュラル (滑らかなグラデーション)</span>
+                        </label>
+                        <label class="radio-label">
+                            <input type="radio" name="gen-mode" value="strict">
+                            <span class="radio-custom"></span>
+                            <span class="radio-text">マテリアル厳格 (標準比率を忠実に再現)</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="action-buttons-group">
+                    <button id="btn-export-csv" class="btn btn-primary">
+                        <span class="btn-icon">📥</span> Figma用 一括CSVエクスポート
+                    </button>
+                    <button id="btn-export-json" class="btn btn-secondary">
+                        <span class="btn-icon">📄</span> 一括 Design Tokens JSON
+                    </button>
+                </div>
+            </section>
+
+            <!-- Main Area: Palette Grid & Code Output -->
+            <div class="palette-container">
+                <!-- Palette View Panel -->
+                <section class="palette-panel glass-card">
+                    <div class="panel-header">
+                        <!-- View switcher tabs -->
+                        <div class="view-tabs">
+                            <button class="view-tab-btn active" data-view="single">単一カラーパレット</button>
+                            <button class="view-tab-btn" data-view="matrix">フルマトリクス (19色相・266色)</button>
+                        </div>
+                        <div class="info-pill" id="contrast-info-pill">
+                            <span class="pill-dot"></span> WCAG 2.0 AA (コントラスト比 4.5:1) 自動対応済
+                        </div>
+                    </div>
+
+                    <!-- Dynamic views container -->
+                    <div class="palette-views-wrapper">
+                        <!-- View 1: Single color palette grid -->
+                        <div class="palette-view-content active" id="view-single">
+                            <div class="palette-grid" id="palette-grid">
+                                <!-- JS dynamic generation -->
+                            </div>
+                        </div>
+
+                        <!-- View 2: Full multi-hue matrix -->
+                        <div class="palette-view-content" id="view-matrix">
+                            <div class="matrix-scroll-wrapper">
+                                <div class="matrix-grid-container" id="matrix-grid-container">
+                                    <!-- JS dynamic generation of the matrix table -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Code Snippets Section -->
+                <section class="code-panel glass-card">
+                    <div class="code-panel-header">
+                        <div class="code-tabs-header">
+                            <button class="tab-btn active" data-tab="css-vars">CSS Variables</button>
+                            <button class="tab-btn" data-tab="tailwind">Tailwind CSS</button>
+                            <button class="tab-btn" data-tab="scss">SCSS</button>
+                        </div>
+                        <!-- Toggle switch to generate single hue vs all hues -->
+                        <div class="code-toggle-wrapper">
+                            <label class="toggle-label">
+                                <input type="checkbox" id="code-all-hues-toggle" checked>
+                                <span class="toggle-slider"></span>
+                                <span class="toggle-text">全19色相を一括出力</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="code-body-wrapper">
+                        <div class="tab-content active" id="tab-css-vars">
+                            <pre><code class="language-css" id="code-css-vars">/* Loading... */</code></pre>
+                        </div>
+                        <div class="tab-content" id="tab-tailwind">
+                            <pre><code class="language-javascript" id="code-tailwind">/* Loading... */</code></pre>
+                        </div>
+                        <div class="tab-content" id="tab-scss">
+                            <pre><code class="language-scss" id="code-scss">/* Loading... */</code></pre>
+                        </div>
+                        <button id="btn-copy-code" class="btn btn-copy-absolute" aria-label="コードをコピー">
+                            <span id="copy-code-text">コピー</span>
+                        </button>
+                    </div>
+                </section>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="app-footer-note">
+            <p>Designed and Built with 💖. Click any color block to copy its hex code.</p>
+        </footer>
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>
