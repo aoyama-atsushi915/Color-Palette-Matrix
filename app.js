@@ -107,15 +107,55 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Color Utility Functions ---
 
+    // Highly lenient color extractor that pulls valid color codes (Hex, RGB, HSL) 
+    // from complex copied strings (e.g. "color: #3f51b5;", "#3f51b5;", "rgb(63, 81, 181)")
     function parseToHex(str) {
         if (!str) return null;
-        let clean = str.replace(/[^0-9a-fA-F]/g, '');
-        if (clean.length === 3) {
-            clean = clean.split('').map(char => char + char).join('');
+        str = str.trim().toLowerCase();
+
+        // 1. Try to extract Hex code with # prefix (handles ending semicolon like "#3f51b5;")
+        let hexWithHash = str.match(/#([0-9a-f]{3,8})/i);
+        if (hexWithHash) {
+            let hex = hexWithHash[1];
+            if (hex.length === 3 || hex.length === 4) {
+                return '#' + hex.substring(0, 3).split('').map(c => c + c).join('');
+            }
+            if (hex.length === 6 || hex.length === 8) {
+                return '#' + hex.substring(0, 6);
+            }
         }
-        if (clean.length === 6) {
-            return '#' + clean.toLowerCase();
+
+        // 2. Try to extract HSL/HSLA function patterns
+        let hslMatch = str.match(/hsla?\(\s*(\d+)\s*,\s*(\d+)%?\s*,\s*(\d+)%?(?:\s*,\s*[\d\.]+)?\s*\)/i);
+        if (hslMatch) {
+            let h = parseInt(hslMatch[1]);
+            let s = parseInt(hslMatch[2]);
+            let l = parseInt(hslMatch[3]);
+            let rgb = hslToRgb(h, s, l);
+            return rgbToHex(rgb.r, rgb.g, rgb.b);
         }
+
+        // 3. Try to extract RGB/RGBA function patterns
+        let rgbMatch = str.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*[\d\.]+)?\s*\)/i);
+        if (rgbMatch) {
+            let r = parseInt(rgbMatch[1]);
+            let g = parseInt(rgbMatch[2]);
+            let b = parseInt(rgbMatch[3]);
+            return rgbToHex(r, g, b);
+        }
+
+        // 4. Try to extract raw bare Hex words (e.g. "3f51b5" or "3f5") from string
+        let hexBare = str.match(/\b([0-9a-f]{6}|[0-9a-f]{3})\b/i);
+        if (hexBare) {
+            let hex = hexBare[1];
+            if (hex.length === 3) {
+                return '#' + hex.split('').map(c => c + c).join('');
+            }
+            if (hex.length === 6) {
+                return '#' + hex;
+            }
+        }
+
         return null;
     }
 
@@ -376,7 +416,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 targetHue = (scheme.hue + hueDelta) % 360;
                 
                 // Scale saturation based on ratio differences to keep brand consistency
-                // If input color is 20% more saturated than its standard anchor, bump up other colors.
                 const satScale = baseHsl.s / anchorScheme.sat;
                 satMultiplier = Math.min(1.5, Math.max(0.6, satScale));
 
@@ -384,10 +423,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 litDelta = (baseHsl.l - anchorScheme.lit) * 0.35; 
             }
 
+            const colors = generatePaletteForHue(baseHex, baseTone, targetHue, satMultiplier, litDelta, mode);
+            
+            // For the absolute anchor brand hue, enforce the exact baseline input color at the baseTone position
+            if (scheme.key === anchorScheme.key) {
+                colors[baseTone] = baseHex;
+            }
+
             matrix[scheme.key] = {
                 name: scheme.name,
-                isBaseHue: scheme.key === state.colorName,
-                colors: generatePaletteForHue(baseHex, baseTone, targetHue, satMultiplier, litDelta, mode)
+                isBaseHue: scheme.key === anchorScheme.key,
+                colors: colors
             };
         });
 
@@ -755,6 +801,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
         state.baseColor = hex;
         
+        // Detect closest standard hue name to automatically update Figma brand name
+        const rgb = hexToRgb(hex);
+        if (rgb) {
+            const hsl = rgbToHsl(rgb.r, rgb.g, rgb.b);
+            let closestScheme = MASTER_SCHEMES[4]; // Default Indigo
+            let minDiff = Infinity;
+            
+            MASTER_SCHEMES.forEach(scheme => {
+                if (scheme.isSpecial) return;
+                let diff = Math.abs(hsl.h - scheme.hue);
+                if (diff > 180) diff = 360 - diff;
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    closestScheme = scheme;
+                }
+            });
+            
+            // Only auto-update the brand name if the user is not actively editing it manually
+            if (document.activeElement !== el.colorNameInput) {
+                state.colorName = closestScheme.key;
+                el.colorNameInput.value = closestScheme.key;
+            }
+        }
+        
         const autoTone = detectClosestTone(hex);
         state.detectedTone = autoTone;
         
@@ -794,12 +864,65 @@ document.addEventListener('DOMContentLoaded', () => {
         updateCodeSnippets();
     }
 
+    // Robust color text input listener (Updates live dynamically as the user types)
     el.colorInput.addEventListener('input', (e) => {
         const val = e.target.value;
         const cleanHex = parseToHex(val);
         if (cleanHex) {
+            // Only update browser's strict picker if we have a full 7-character hex (#rrggbb)
+            if (cleanHex.length === 7) {
+                el.colorPicker.value = cleanHex;
+            }
+            onColorChange(cleanHex);
+        }
+    });
+
+    // Explicit Paste listener to capture and extract colors from messy clipboard strings
+    el.colorInput.addEventListener('paste', (e) => {
+        // Retrieve pasted clipboard text safely
+        const clipboardData = e.clipboardData || window.clipboardData;
+        if (!clipboardData) return;
+
+        const pastedText = clipboardData.getData('text');
+        const cleanHex = parseToHex(pastedText);
+        
+        if (cleanHex) {
+            e.preventDefault(); // Intercept default text paste to prevent input distortion
+            el.colorInput.value = cleanHex.toUpperCase();
             el.colorPicker.value = cleanHex;
             onColorChange(cleanHex);
+            showToast(`色コード ${cleanHex.toUpperCase()} を貼り付けました！`);
+        } else {
+            // Fallback: If extractor fails but there is text, let it paste naturally, 
+            // and the 'input'/'change' listener will attempt extraction.
+            setTimeout(() => {
+                const fallbackHex = parseToHex(el.colorInput.value);
+                if (fallbackHex) {
+                    el.colorInput.value = fallbackHex.toUpperCase();
+                    el.colorPicker.value = fallbackHex;
+                    onColorChange(fallbackHex);
+                }
+            }, 10);
+        }
+    });
+
+    // Change listener to handle browser autofill, drug drop, or context-menu paste events
+    el.colorInput.addEventListener('change', (e) => {
+        const cleanHex = parseToHex(e.target.value);
+        if (cleanHex) {
+            el.colorInput.value = cleanHex.toUpperCase();
+            if (cleanHex.length === 7) {
+                el.colorPicker.value = cleanHex;
+            }
+            onColorChange(cleanHex);
+        }
+    });
+
+    // Clean up to standard Hex on Focus Out (blur)
+    el.colorInput.addEventListener('blur', (e) => {
+        const cleanHex = parseToHex(e.target.value);
+        if (cleanHex) {
+            e.target.value = cleanHex.toUpperCase();
         }
     });
 
