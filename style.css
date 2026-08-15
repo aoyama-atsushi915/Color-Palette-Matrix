@@ -69,7 +69,6 @@ body {
     background-color: var(--bg-base);
     color: var(--text-primary);
     min-height: 100vh;
-    overflow-x: hidden;
     position: relative;
     transition: background-color 0.5s ease, color 0.3s ease;
 }
@@ -217,9 +216,16 @@ body {
     flex-grow: 1;
 }
 
+/* グリッドアイテムの既定は min-width:auto なので、中身（最小1240pxのマトリクス）に
+   引きずられてトラックが膨らみ、ページ全体が横に溢れる。0 を明示して縮めるようにし、
+   溢れは .matrix-scroll-wrapper の内部スクロールで受ける。 */
+.app-dashboard > * {
+    min-width: 0;
+}
+
 @media (max-width: 1200px) {
     .app-dashboard {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr);
     }
 }
 
@@ -547,11 +553,13 @@ input[type="range"]::-webkit-slider-thumb:hover {
     display: flex;
     flex-direction: column;
     gap: 2rem;
+    min-width: 0;
 }
 
 .palette-panel {
     display: flex;
     flex-direction: column;
+    min-width: 0;
 }
 
 .panel-header {
@@ -775,14 +783,38 @@ input[type="range"]::-webkit-slider-thumb:hover {
 /* --- Full Multi-Hue Color Matrix (Matrix View) --- */
 .matrix-scroll-wrapper {
     overflow-x: auto;
+    max-width: 100%;
     margin: 0 -1rem;
-    padding: 0 1rem 0.5rem 1rem;
+    /* 上下にも余白を取る。セルの :hover が scale(1.22) するので、
+       余白が無いと最上行と最終列のホバーがスクロール領域に切り取られる。 */
+    padding: 0.5rem 1rem;
     -webkit-overflow-scrolling: touch;
     border-radius: var(--radius-md);
 }
 
 .matrix-grid-container {
     min-width: 1240px; /* Minimum width to maintain layout spacing without collapsing */
+}
+
+/* 横スクロールできることが分かるよう、この領域だけスクロールバーを太く・濃くする */
+.matrix-scroll-wrapper::-webkit-scrollbar {
+    height: 10px;
+}
+
+.matrix-scroll-wrapper::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.22);
+}
+
+.matrix-scroll-wrapper::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.35);
+}
+
+[data-theme="light"] .matrix-scroll-wrapper::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.22);
+}
+
+[data-theme="light"] .matrix-scroll-wrapper::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.35);
 }
 
 /* Master Matrix Grid Layout: 20 columns (1 label + 19 Hues) */
@@ -882,6 +914,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
     position: relative;
     padding: 0; /* Clear default padding for design */
     overflow: hidden;
+    min-width: 0;
 }
 
 .code-panel-header {
@@ -901,6 +934,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
 
 .code-tabs-header {
     display: flex;
+    flex-wrap: wrap;
 }
 
 .tab-btn {
@@ -1021,7 +1055,7 @@ input[type="range"]::-webkit-slider-thumb:hover {
 .code-body-wrapper pre {
     margin: 0;
     max-height: 280px;
-    overflow-y: auto;
+    overflow: auto; /* 長い行はパネルを広げず、コード内で横スクロールさせる */
 }
 
 .code-body-wrapper code {
@@ -1077,8 +1111,11 @@ input[type="range"]::-webkit-slider-thumb:hover {
     position: fixed;
     bottom: 2rem;
     right: 2rem;
+    /* 長い警告文でも画面外へ伸びないよう上限を持たせる */
+    max-width: min(26rem, calc(100vw - 4rem));
     display: flex;
     flex-direction: column;
+    align-items: flex-end;
     gap: 0.75rem;
     z-index: 9999;
 }
