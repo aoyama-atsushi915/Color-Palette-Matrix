@@ -23,6 +23,7 @@ document.addEventListener('DOMContentLoaded', () => {
         currentTheme: 'dark',        // 'dark' or 'light'
         generatedPalette: {},        // Current single selected tone palette (14 colors)
         generatedMatrix: {},         // Full 19-Hue x 14-Tone Matrix (266 colors)
+        anchorKey: 'indigo',         // Master scheme key the input color was matched to
         activeTab: 'css-vars',        // Currently viewed snippet tab
         activeView: 'single',        // 'single' (1 Hue) or 'matrix' (19 Hues)
         exportAllHuesCode: true      // True: output 266 variables in snippets, False: output 14
@@ -445,18 +446,15 @@ document.addEventListener('DOMContentLoaded', () => {
     // 1. Single View Renderer
     function renderSingleGrid() {
         el.paletteGrid.innerHTML = '';
-        const name = state.colorName.toLowerCase();
-        
-        // Ensure state contains single palette mapped from the master matrix
-        if (state.generatedMatrix[name]) {
-            state.generatedPalette = state.generatedMatrix[name].colors;
-        } else {
-            // Fallback
-            state.generatedPalette = state.generatedMatrix['indigo'].colors;
-        }
+
+        // Always show the hue the input color was actually matched to.
+        // The Figma name is a free-form label and must not be used as a matrix key,
+        // otherwise any custom name ('brand', 'toyota', ...) would silently fall back to Indigo.
+        const anchor = state.generatedMatrix[state.anchorKey] || state.generatedMatrix['indigo'];
+        state.generatedPalette = anchor.colors;
 
         Object.entries(state.generatedPalette).forEach(([tone, hex]) => {
-            const isBase = (tone == state.selectedTone && name === state.colorName);
+            const isBase = (tone == state.selectedTone);
             const acc = getAccessibilityDetails(hex);
 
             const card = document.createElement('div');
@@ -528,7 +526,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const acc = getAccessibilityDetails(hex);
                 
                 // Detect if this is the absolute matching base input color cell
-                const isAbsoluteBase = (tone == state.selectedTone && scheme.key === state.colorName);
+                const isAbsoluteBase = (tone == state.selectedTone && scheme.key === state.anchorKey);
 
                 const cell = document.createElement('div');
                 cell.className = `matrix-cell ${isAbsoluteBase ? 'is-base-cell' : ''}`;
@@ -712,29 +710,66 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Dynamic Exporters ---
 
+    // Resolves the exported variable name for one hue.
+    // Only the anchor hue (the scheme the input color was matched to) is renamed to the
+    // user's Figma name — every other hue keeps its standard key.
+    function exportNameFor(schemeKey, baseName) {
+        return schemeKey === state.anchorKey ? baseName : schemeKey;
+    }
+
+    // The Figma name is free-form, so it can collide with another hue's standard key
+    // (e.g. anchor is Indigo but the user types "blue"). That would emit two different
+    // colors under the same primitive/<name>/<tone> path and break the Figma import.
+    function findNameCollision(baseName) {
+        return MASTER_SCHEMES.find(s => s.key !== state.anchorKey && s.key === baseName) || null;
+    }
+
+    // Hands the given text to the browser as a file download.
+    //
+    // This used to build a `data:` URI. That silently truncated every CSV: encodeURI()
+    // does not escape '#', so the first hex value turned into the URL fragment and
+    // everything after it was dropped — the saved file contained one partial row.
+    // A Blob carries the bytes directly, with no URL escaping and no length limit.
+    function downloadFile(filename, text, mimeType) {
+        const blob = new Blob([text], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+
+        link.setAttribute("href", url);
+        link.setAttribute("download", filename);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        URL.revokeObjectURL(url);
+    }
+
     // Figma Variables CSV Exporter (266 rows)
     function exportToCsv() {
         const baseName = state.colorName.toLowerCase().replace(/\s+/g, '-');
-        let csvContent = "data:text/csv;charset=utf-8,";
-        csvContent += "Name,Value,Type\n";
+
+        const collision = findNameCollision(baseName);
+        if (collision) {
+            showToast(`カラー名「${baseName}」は標準色相「${collision.name}」と重複するため書き出せません。別の名前にしてください。`);
+            return;
+        }
+
+        let csvContent = "Name,Value,Type\n";
 
         // Loop through all 19 Hues inside matrix to append all 266 colors
         MASTER_SCHEMES.forEach(scheme => {
-            // If the hue scheme is our customized base hue, use our custom brand name
-            const schemeName = scheme.key === 'indigo' ? baseName : scheme.key;
-            
+            const schemeName = exportNameFor(scheme.key, baseName);
+
             Object.entries(state.generatedMatrix[scheme.key].colors).forEach(([tone, hex]) => {
                 csvContent += `primitive/${schemeName}/${tone.toLowerCase()},${hex.toLowerCase()},Color\n`;
             });
         });
 
-        const encodedUri = encodeURI(csvContent);
-        const link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
-        link.setAttribute("download", `primitive_${baseName}_matrix_palette.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        downloadFile(
+            `primitive_${baseName}_matrix_palette.csv`,
+            csvContent,
+            'text/csv;charset=utf-8'
+        );
 
         showToast(`Figma用一括CSVをエクスポートしました！(266色/primitive/*)`);
     }
@@ -742,12 +777,19 @@ document.addEventListener('DOMContentLoaded', () => {
     // Design Tokens standard JSON Exporter (266 colors)
     function exportToJson() {
         const baseName = state.colorName.toLowerCase().replace(/\s+/g, '-');
+
+        const collision = findNameCollision(baseName);
+        if (collision) {
+            showToast(`カラー名「${baseName}」は標準色相「${collision.name}」と重複するため書き出せません。別の名前にしてください。`);
+            return;
+        }
+
         const tokenObj = {
             "primitive": {}
         };
 
         MASTER_SCHEMES.forEach(scheme => {
-            const schemeName = scheme.key === 'indigo' ? baseName : scheme.key;
+            const schemeName = exportNameFor(scheme.key, baseName);
             tokenObj.primitive[schemeName] = {};
 
             Object.entries(state.generatedMatrix[scheme.key].colors).forEach(([tone, hex]) => {
@@ -759,13 +801,11 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
 
-        const jsonString = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(tokenObj, null, 2));
-        const link = document.createElement("a");
-        link.setAttribute("href", jsonString);
-        link.setAttribute("download", `primitive_${baseName}_matrix_palette.json`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        downloadFile(
+            `primitive_${baseName}_matrix_palette.json`,
+            JSON.stringify(tokenObj, null, 2),
+            'application/json;charset=utf-8'
+        );
 
         showToast(`Design Tokens 一括JSONファイルをエクスポートしました！`);
     }
@@ -853,7 +893,12 @@ document.addEventListener('DOMContentLoaded', () => {
     function regenerateAndRedraw() {
         // Generate complete 19 Hues matrix一括!
         state.generatedMatrix = generateFullMatrix(state.baseColor, state.selectedTone, state.generationMode);
-        
+
+        // Remember which hue the input color anchored to. Rendering and exports key off this,
+        // never off the free-form Figma name.
+        state.anchorKey = Object.keys(state.generatedMatrix)
+            .find(key => state.generatedMatrix[key].isBaseHue) || 'indigo';
+
         // Re-draw active view
         if (state.activeView === 'single') {
             renderSingleGrid();
