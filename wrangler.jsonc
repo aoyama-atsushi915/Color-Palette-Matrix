@@ -1,0 +1,10 @@
+// Cloudflare Workers（静的アセット）へのデプロイ設定
+// 公開先: https://color.unitcell.design/
+// 更新: npx wrangler deploy
+// アップロード対象から外すファイルは .assetsignore で管理
+{
+  "name": "color-palette-matrix",
+  "compatibility_date": "2026-10-01",
+  "assets": { "directory": "." },
+  "routes": [{ "pattern": "color.unitcell.design", "custom_domain": true }]
+}

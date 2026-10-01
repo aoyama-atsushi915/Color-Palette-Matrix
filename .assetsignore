@@ -1,0 +1,7 @@
+/.git/
+/.gitignore
+/.gitattributes
+/.wrangler/
+.DS_Store
+/test/
+/wrangler.jsonc
